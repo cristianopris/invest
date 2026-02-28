@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<!--
+════════════════════════════════════════════════════════════════════════════════
+  ETF HOLDINGS MATRIX — PRODUCT & DESIGN SPECIFICATION
+  Version: 2.9  |  Last updated: 2026-02-25
+  ⚠️  UPDATE THIS SPEC whenever the implementation changes.
+════════════════════════════════════════════════════════════════════════════════
+
+PURPOSE
+  Interactive mobile-first tool for comparing top holdings across 6 ETFs:
+  XUTC (MSCI USA IT), SP20 (S&P 500 Top 20), EQQQ (Nasdaq-100 UCITS),
+  WTAI (WisdomTree AI), CSPX (iShares Core S&P 500), VWCE (Vanguard All-World). 
+  Visualises weight and return-contribution of each holding per fund for 
+  6 trailing time periods (1M, 3M, 6M, 1Y, 3Y, 5Y). All data in USD.
+
+LAYOUT  (flex column, 100vh, no page scroll)
+  ┌─ Toolbar (36px) ──────────────────────────────────────────────────────────┐
+  │  [● ETF Matrix]  [RET (USD) pills]  [TOP n pills]  [SORT]                 │
+  └───────────────────────────────────────────────────────────────────────────┘
+  ┌─ Matrix (flex:1, overflow scroll both axes) ──────────────────────────────┐
+  │  Sticky Col 1 (LABEL_W=92px): ETF ticker + inline Perf Bar stacked.       │
+  │  Header Row (HEADER_H=58px): sticky top row with tickers.                 │
+  │  Data Cells (CELL_W=72px × CELL_H=72px): Bubble visualisations.           │
+  └───────────────────────────────────────────────────────────────────────────┘
+  ┌─ Cards Overlay (fixed, pointer-events: none wrapper) ─────────────────────┐
+  │  Displays multiple explicit Etf/Ticker popups in a flex-wrap grid.        │
+  └───────────────────────────────────────────────────────────────────────────┘
+  ┌─ Footer (auto height) ────────────────────────────────────────────────────┐
+  │  Tiny "▸ NOTES" toggle button; expands data-provenance paragraph.        │
+  └───────────────────────────────────────────────────────────────────────────┘
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+<title>ETF Holdings Matrix</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --accent:#1A52D5;--dark:#1C1C1E;--mid:#636366;--light:#8E8E93;
+  --border:#E5E5EA;--bg:#FFFFFF;
+  --sans:'IBM Plex Sans','Helvetica Neue',sans-serif;
+  --mono:'IBM Plex Mono','SF Mono',monospace;
+}
+html,body,#root{height:100%;overflow:hidden}
+body{font-family:var(--sans);background:var(--bg);color:var(--dark);-webkit-font-smoothing:antialiased}
+button{font-family:var(--sans);cursor:pointer;border:none;background:none;padding:0}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#D1D1D6;border-radius:2px}
+
+/* ── Root ── */
+#root{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+/* ── Single toolbar ── */
+.toolbar{
+  flex-shrink:0;height:36px;display:flex;align-items:center;
+  border-bottom:1px solid var(--border);overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:none;
+}
+.toolbar::-webkit-scrollbar{display:none}
+.tb-brand{
+  display:flex;align-items:center;gap:6px;padding:0 11px;
+  border-right:1px solid var(--border);flex-shrink:0;height:100%;
+}
+.tb-group{
+  display:flex;align-items:center;gap:4px;padding:0 9px;
+  border-right:1px solid var(--border);flex-shrink:0;height:100%;
+}
+.tb-lbl{font-size:8.5px;color:#C7C7CC;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;margin-right:2px;white-space:nowrap}
+
+/* ── Pills ── */
+.pill{
+  padding:2px 8px;border-radius:100px;font-size:10.5px;font-weight:500;
+  border:1.5px solid var(--border);color:var(--light);
+  transition:all 0.1s;white-space:nowrap;cursor:pointer;background:transparent;line-height:1.5;
+}
+.pill.active{background:var(--dark);color:#fff;border-color:var(--dark)}
+.pill.active.accent{background:var(--accent);border-color:var(--accent)}
+.pill:hover:not(.active){border-color:var(--mid);color:var(--dark)}
+
+/* ── Matrix ── */
+.matrix-outer{flex:1;overflow:auto;position:relative;-webkit-overflow-scrolling:touch}
+/* border-collapse: separate ensures sticky columns do not suffer from subpixel jitters */
+table.matrix{border-collapse:separate;border-spacing:0;table-layout:fixed}
+table.matrix td,table.matrix th{padding:0;margin:0}
+.cell-inner{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
+.bubble{border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:transform 0.13s,box-shadow 0.13s;cursor:pointer;gap:1px}
+.bubble:hover{transform:scale(1.1)!important;box-shadow:0 2px 12px rgba(0,0,0,0.18)}
+.col-header-inner{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:0 2px 5px;cursor:pointer;user-select:none}
+.col-header-inner:hover{background:#F5F5F7}
+
+/* ── Tooltip ── */
+.tooltip{position:fixed;pointer-events:none;z-index:1000;background:var(--dark);color:#fff;border-radius:9px;padding:11px 14px;font-size:12px;max-width:220px;box-shadow:0 6px 24px rgba(0,0,0,0.28)}
+.tooltip-grid{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:11px;margin-top:7px}
+.tooltip-lbl{opacity:0.5}
+.tooltip-val{font-family:var(--mono);font-size:10.5px}
+
+/* ── Footer ── */
+.footer{flex-shrink:0;position:relative;border-top:1px solid var(--border)}
+.footer-toggle{display:inline-flex;align-items:center;gap:3px;padding:2px 10px;cursor:pointer;background:none;border:none;font-family:var(--mono);line-height:1.7}
+.ft-label{font-size:8px;color:#C7C7CC;font-weight:600;letter-spacing:0.4px;text-transform:uppercase;transition:color 0.1s}
+.footer-toggle:hover .ft-label{color:#8E8E93}
+.footer-body{padding:8px 14px 10px;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo, useRef, useCallback } = React;
+
+/* ─────────────────────────────────────────────────────────────────────
+   EMBEDDED DATA — compiled Feb 24, 2026 (All Returns strictly in USD)
+───────────────────────────────────────────────────────────────────── */
+
+const RAW_HOLDINGS = {
+  XUTC: [
+    { ticker:"NVDA",  name:"NVIDIA Corp",             weight:22.07 },
+    { ticker:"AAPL",  name:"Apple Inc",               weight:18.07 },
+    { ticker:"MSFT",  name:"Microsoft Corp",          weight:17.27 },
+    { ticker:"AVGO",  name:"Broadcom Inc",            weight: 8.99 },
+    { ticker:"PLTR",  name:"Palantir Technologies",   weight: 1.90 },
+    { ticker:"ORCL",  name:"Oracle Corp",             weight: 1.77 },
+    { ticker:"AMD",   name:"AMD",                     weight: 1.75 },
+    { ticker:"CSCO",  name:"Cisco Systems",           weight: 1.51 },
+    { ticker:"IBM",   name:"IBM",                     weight: 1.42 },
+    { ticker:"MU",    name:"Micron Technology",       weight: 1.30 },
+    { ticker:"AMAT",  name:"Applied Materials",       weight: 1.10 },
+    { ticker:"TXN",   name:"Texas Instruments",       weight: 1.00 },
+    { ticker:"LRCX",  name:"Lam Research",            weight: 0.90 },
+    { ticker:"INTU",  name:"Intuit",                  weight: 0.85 },
+    { ticker:"CRM",   name:"Salesforce",              weight: 0.80 },
+  ],
+  SP20: [
+    { ticker:"NVDA",  name:"NVIDIA Corp",             weight:17.09 },
+    { ticker:"AAPL",  name:"Apple Inc",               weight:13.90 },
+    { ticker:"MSFT",  name:"Microsoft Corp",          weight:13.49 },
+    { ticker:"AMZN",  name:"Amazon.com",              weight: 7.47 },
+    { ticker:"AVGO",  name:"Broadcom Inc",            weight: 6.12 },
+    { ticker:"GOOGL", name:"Alphabet Class A",        weight: 5.65 },
+    { ticker:"META",  name:"Meta Platforms",          weight: 4.99 },
+    { ticker:"GOOG",  name:"Alphabet Class C",        weight: 4.54 },
+    { ticker:"TSLA",  name:"Tesla",                   weight: 4.26 },
+    { ticker:"BRK_B", name:"Berkshire Hathaway B",    weight: 3.04 },
+    { ticker:"LLY",   name:"Eli Lilly",               weight: 2.50 },
+    { ticker:"JPM",   name:"JPMorgan Chase",          weight: 2.30 },
+    { ticker:"V",     name:"Visa",                    weight: 2.10 },
+    { ticker:"XOM",   name:"ExxonMobil",              weight: 1.90 },
+    { ticker:"UNH",   name:"UnitedHealth Group",      weight: 1.80 },
+  ],
+  EQQQ: [
+    { ticker:"NVDA",  name:"NVIDIA Corp",             weight:10.32 },
+    { ticker:"AAPL",  name:"Apple Inc",               weight: 8.43 },
+    { ticker:"MSFT",  name:"Microsoft Corp",          weight: 8.18 },
+    { ticker:"AVGO",  name:"Broadcom Inc",            weight: 6.13 },
+    { ticker:"AMZN",  name:"Amazon.com",              weight: 4.97 },
+    { ticker:"GOOGL", name:"Alphabet Class A",        weight: 3.43 },
+    { ticker:"TSLA",  name:"Tesla",                   weight: 3.36 },
+    { ticker:"GOOG",  name:"Alphabet Class C",        weight: 3.20 },
+    { ticker:"META",  name:"Meta Platforms",          weight: 3.02 },
+    { ticker:"NFLX",  name:"Netflix",                 weight: 2.38 },
+    { ticker:"PLTR",  name:"Palantir Technologies",   weight: 2.10 },
+    { ticker:"COST",  name:"Costco Wholesale",        weight: 2.00 },
+    { ticker:"AMD",   name:"AMD",                     weight: 1.90 },
+    { ticker:"CSCO",  name:"Cisco Systems",           weight: 1.80 },
+    { ticker:"PEP",   name:"PepsiCo",                 weight: 1.60 },
+  ],
+  WTAI: [
+    { ticker:"MU",       name:"Micron Technology",         weight: 3.96 },
+    { ticker:"000660.KS",name:"SK Hynix",                  weight: 3.93 },
+    { ticker:"GOOGL",    name:"Alphabet Class A",          weight: 3.07 },
+    { ticker:"AVGO",     name:"Broadcom Inc",              weight: 2.73 },
+    { ticker:"AMD",      name:"AMD",                       weight: 2.69 },
+    { ticker:"NVDA",     name:"NVIDIA Corp",               weight: 2.65 },
+    { ticker:"QCOM",     name:"Qualcomm",                  weight: 2.63 },
+    { ticker:"AMZN",     name:"Amazon.com",                weight: 2.55 },
+    { ticker:"TSM",      name:"TSMC (ADR)",                weight: 2.47 },
+    { ticker:"LRCX",     name:"Lam Research",              weight: 2.38 },
+    { ticker:"MSFT",     name:"Microsoft Corp",            weight: 2.30 },
+    { ticker:"IBM",      name:"IBM",                       weight: 2.20 },
+    { ticker:"CSCO",     name:"Cisco Systems",             weight: 2.10 },
+    { ticker:"AMAT",     name:"Applied Materials",         weight: 2.00 },
+    { ticker:"TXN",      name:"Texas Instruments",         weight: 1.90 },
+  ],
+  CSPX: [
+    { ticker:"NVDA",  name:"NVIDIA Corp",             weight: 7.10 },
+    { ticker:"AAPL",  name:"Apple Inc",               weight: 6.50 },
+    { ticker:"MSFT",  name:"Microsoft Corp",          weight: 6.40 },
+    { ticker:"AMZN",  name:"Amazon.com",              weight: 3.40 },
+    { ticker:"AVGO",  name:"Broadcom Inc",            weight: 1.40 },
+    { ticker:"GOOGL", name:"Alphabet Class A",        weight: 1.20 },
+    { ticker:"META",  name:"Meta Platforms",          weight: 1.10 },
+    { ticker:"GOOG",  name:"Alphabet Class C",        weight: 1.00 },
+    { ticker:"TSLA",  name:"Tesla",                   weight: 0.90 },
+    { ticker:"BRK_B", name:"Berkshire Hathaway B",    weight: 0.80 },
+    { ticker:"LLY",   name:"Eli Lilly",               weight: 0.80 },
+    { ticker:"JPM",   name:"JPMorgan Chase",          weight: 0.70 },
+    { ticker:"V",     name:"Visa",                    weight: 0.60 },
+    { ticker:"XOM",   name:"ExxonMobil",              weight: 0.60 },
+    { ticker:"UNH",   name:"UnitedHealth Group",      weight: 0.60 },
+  ],
+  VWCE: [
+    { ticker:"NVDA",  name:"NVIDIA Corp",             weight: 4.10 },
+    { ticker:"AAPL",  name:"Apple Inc",               weight: 3.90 },
+    { ticker:"MSFT",  name:"Microsoft Corp",          weight: 3.80 },
+    { ticker:"AMZN",  name:"Amazon.com",              weight: 2.00 },
+    { ticker:"AVGO",  name:"Broadcom Inc",            weight: 0.80 },
+    { ticker:"GOOGL", name:"Alphabet Class A",        weight: 0.70 },
+    { ticker:"META",  name:"Meta Platforms",          weight: 0.70 },
+    { ticker:"GOOG",  name:"Alphabet Class C",        weight: 0.60 },
+    { ticker:"TSLA",  name:"Tesla",                   weight: 0.50 },
+    { ticker:"TSM",   name:"TSMC (ADR)",              weight: 0.50 },
+    { ticker:"LLY",   name:"Eli Lilly",               weight: 0.50 },
+    { ticker:"BRK_B", name:"Berkshire Hathaway B",    weight: 0.50 },
+    { ticker:"JPM",   name:"JPMorgan Chase",          weight: 0.40 },
+    { ticker:"V",     name:"Visa",                    weight: 0.40 },
+    { ticker:"XOM",   name:"ExxonMobil",              weight: 0.40 },
+  ],
+};
+
+/* ─── ETF period returns (Strictly USD via Wicket AJAX) ─── */
+const ETF_RETURNS = {
+  XUTC: { "1M":  -3.7, "3M":   0.6, "6M":   6.2, "1Y":  16.1, "3Y": 124.0, "5Y": 120.5 },
+  SP20: { "1M":  -3.0, "3M":   0.2, "6M":   6.6, "1Y":  13.8, "3Y":  null,  "5Y":  null  },
+  EQQQ: { "1M":  -3.8, "3M":   4.0, "6M":   7.7, "1Y":  13.7, "3Y": 104.6, "5Y":  87.7  },
+  WTAI: { "1M":  -4.1, "3M":  15.0, "6M":  20.1, "1Y":  26.1, "3Y":  84.2, "5Y":  31.0  },
+  CSPX: { "1M":  -2.1, "3M":   4.1, "6M":   8.3, "1Y":  21.5, "3Y":  41.2, "5Y":  88.4  },
+  VWCE: { "1M":  -1.8, "3M":   3.6, "6M":   7.4, "1Y":  16.8, "3Y":  28.5, "5Y":  61.2  },
+};
+
+const ETF_META = {
+  XUTC: { name: "Xtrackers MSCI USA Information Technology UCITS ETF 1D", issuer: "Xtrackers (DWS)", index: "MSCI USA Information Technology 20/35 Custom", domicile: "IE", ter: "0.12%", currency: "USD", justetf: "https://www.justetf.com/en/etf-profile.html?isin=IE00BGQYRS42" },
+  SP20: { name: "iShares S&P 500 Top 20 UCITS ETF USD (Acc)", issuer: "iShares (BlackRock)", index: "S&P 500 Top 20 Select 35/20 Capped", domicile: "IE", ter: "0.20%", currency: "USD", justetf: "https://www.justetf.com/en/etf-profile.html?isin=IE000VA628D5" },
+  EQQQ: { name: "Invesco EQQQ Nasdaq-100 UCITS ETF", issuer: "Invesco", index: "Nasdaq-100 Index", domicile: "IE", ter: "0.30%", currency: "USD", justetf: "https://www.justetf.com/en/etf-profile.html?isin=IE0032077012" },
+  WTAI: { name: "WisdomTree Artificial Intelligence UCITS ETF USD Acc", issuer: "WisdomTree", index: "Nasdaq CTA Artificial Intelligence", domicile: "IE", ter: "0.40%", currency: "USD", justetf: "https://www.justetf.com/en/etf-profile.html?isin=IE00BDVPNG13" },
+  CSPX: { name: "iShares Core S&P 500 UCITS ETF USD (Acc)", issuer: "iShares (BlackRock)", index: "S&P 500", domicile: "IE", ter: "0.07%", currency: "USD", justetf: "https://www.justetf.com/en/etf-profile.html?isin=IE00B5BMR087" },
+  VWCE: { name: "Vanguard FTSE All-World UCITS ETF (USD) Accumulating", issuer: "Vanguard", index: "FTSE All-World", domicile: "IE", ter: "0.22%", currency: "USD", justetf: "https://www.justetf.com/en/etf-profile.html?isin=IE00BK5BQT80" },
+};
+
+/* ─── Holding Returns (Strictly US-listed tickers, inherently in USD) ─── */
+const HOLDING_RETURNS = {
+  NVDA:  { "1M":   2.1, "3M":   7.1, "6M":   7.6, "1Y":   42.5, "3Y":  710.3, "5Y": 1258.3 },
+  AAPL:  { "1M":   7.4, "3M":  -1.9, "6M":  17.1, "1Y":    8.9, "3Y":   80.7, "5Y":  117.1 },
+  MSFT:  { "1M": -17.3, "3M": -18.4, "6M": -23.9, "1Y":   -5.1, "3Y":   54.5, "5Y":   71.8 },
+  AVGO:  { "1M":   3.2, "3M":  -2.7, "6M":  12.8, "1Y":   52.4, "3Y":  491.8, "5Y":  678.1 },
+  MU:    { "1M":   5.3, "3M": 103.1, "6M": 258.1, "1Y":  327.3, "3Y":  627.0, "5Y":  389.0 },
+  AMD:   { "1M": -24.3, "3M":  -3.5, "6M":  17.2, "1Y":   77.4, "3Y":  146.5, "5Y":  132.0 },
+  PLTR:  { "1M": -23.0, "3M": -15.7, "6M": -17.7, "1Y":   28.9, "3Y": 1498.5, "5Y":  388.2 },
+  CSCO:  { "1M":   4.2, "3M":   2.7, "6M":  16.8, "1Y":   24.5, "3Y":   72.0, "5Y":   97.4 },
+  LRCX:  { "1M":  11.2, "3M":  70.1, "6M": 143.0, "1Y":  184.2, "3Y":  415.0, "5Y":  354.7 },
+  IBM:   { "1M": -23.2, "3M": -24.5, "6M":  -6.7, "1Y":  -12.5, "3Y":   89.3, "5Y":  136.2 },
+  ACN:   { "1M": -28.4, "3M": -20.1, "6M": -22.4, "1Y":  -44.2, "3Y":  -22.7, "5Y":  -15.9 },
+  AMAT:  { "1M":  16.0, "3M":  67.0, "6M": 130.6, "1Y":  119.1, "3Y":  239.5, "5Y":  236.3 },
+  TXN:   { "1M":  14.5, "3M":  38.8, "6M":   8.4, "1Y":   12.3, "3Y":   40.1, "5Y":   46.7 },
+  CRM:   { "1M": -21.9, "3M": -21.4, "6M": -28.0, "1Y":  -42.1, "3Y":    9.9, "5Y":  -23.5 },
+  INTU:  { "1M": -36.2, "3M": -45.7, "6M": -45.5, "1Y":  -36.0, "3Y":  -11.0, "5Y":   -7.0 },
+  META:  { "1M":  -3.3, "3M":   7.3, "6M": -15.4, "1Y":   -6.5, "3Y":  273.0, "5Y":  141.4 },
+  GOOGL: { "1M":  -5.0, "3M":   4.0, "6M":  51.4, "1Y":   74.1, "3Y":  245.3, "5Y":  204.7 },
+  GOOG:  { "1M":  -5.1, "3M":   4.1, "6M":  51.0, "1Y":   72.3, "3Y":  244.8, "5Y":  203.3 },
+  VZ:    { "1M":  25.7, "3M":  22.6, "6M":  15.7, "1Y":   24.1, "3Y":   58.0, "5Y":   18.3 },
+  CMCSA: { "1M":   8.0, "3M":  24.8, "6M":   1.0, "1Y":   -3.0, "3Y":   -1.1, "5Y":  -26.7 },
+  NFLX:  { "1M": -11.7, "3M": -27.1, "6M": -36.9, "1Y":  -24.2, "3Y":  134.9, "5Y":   39.2 },
+  T:     { "1M":  20.9, "3M":  11.3, "6M":   1.4, "1Y":   11.8, "3Y":   74.0, "5Y":   79.0 },
+  EA:    { "1M":  -1.7, "3M":  -0.0, "6M":  17.2, "1Y":   53.8, "3Y":   84.0, "5Y":   45.9 },
+  TTWO:  { "1M": -20.4, "3M": -16.9, "6M": -14.6, "1Y":   -7.6, "3Y":   77.2, "5Y":    5.2 },
+  DIS:   { "1M":  -5.9, "3M":   0.8, "6M": -11.6, "1Y":   -2.8, "3Y":    5.1, "5Y":  -45.8 },
+  WBD:   { "1M":   1.2, "3M":  24.8, "6M": 140.0, "1Y":  168.3, "3Y":   83.9, "5Y":  -45.4 },
+  LYV:   { "1M":   7.7, "3M":  21.2, "6M":  -4.5, "1Y":    5.9, "3Y":  106.9, "5Y":   75.2 },
+  CHTR:  { "1M":  18.7, "3M":  12.1, "6M": -18.0, "1Y":  -37.0, "3Y":  -40.6, "5Y":  -62.3 },
+  OMC:   { "1M":   1.2, "3M":   8.9, "6M":   3.3, "1Y":    1.8, "3Y":   -3.0, "5Y":   36.0 },
+  NWSA:  { "1M": -14.3, "3M": -10.5, "6M": -24.3, "1Y":  -18.8, "3Y":   34.9, "5Y":    2.7 },
+  AMZN:  { "1M": -14.2, "3M":  -7.0, "6M": -10.3, "1Y":   -5.2, "3Y":  114.2, "5Y":   28.5 },
+  TSLA:  { "1M": -11.0, "3M":   2.2, "6M":  17.6, "1Y":   18.4, "3Y":   97.9, "5Y":   71.6 },
+  COST:  { "1M":   0.4, "3M":   9.8, "6M":   3.2, "1Y":   -4.2, "3Y":  108.2, "5Y":  204.4 },
+  PEP:   { "1M":  16.4, "3M":  16.2, "6M":  14.7, "1Y":   14.0, "3Y":    5.4, "5Y":   47.9 },
+  TSM:   { "1M":  10.5, "3M":  34.9, "6M":  59.8, "1Y":   89.2, "3Y":  330.4, "5Y":  211.7 },
+  JPM:   { "1M":   0.0, "3M":   0.3, "6M":   1.4, "1Y":   15.0, "3Y":  128.8, "5Y":  124.4 },
+  LLY:   { "1M":  -0.4, "3M":   0.1, "6M":  49.2, "1Y":   22.1, "3Y":  230.5, "5Y":  449.5 },
+  ORCL:  { "1M": -20.2, "3M": -28.7, "6M": -40.0, "1Y":  -14.9, "3Y":   65.4, "5Y":  134.6 },
+  SAP:   { "1M": -14.9, "3M": -16.9, "6M": -27.4, "1Y":  -29.9, "3Y":   76.1, "5Y":   71.2 },
+  BRK_B: { "1M":   3.2, "3M":  -2.0, "6M":   1.0, "1Y":    3.2, "3Y":   63.0, "5Y":  101.2 },
+  V:     { "1M":  -5.8, "3M":  -6.4, "6M": -12.1, "1Y":  -11.4, "3Y":   41.8, "5Y":   49.9 },
+  XOM:   { "1M":  12.4, "3M":  29.6, "6M":  37.6, "1Y":   40.9, "3Y":   50.8, "5Y":  231.7 },
+  UNH:   { "1M": -20.7, "3M": -11.2, "6M":  -7.0, "1Y":  -38.0, "3Y":  -39.3, "5Y":   -7.0 },
+  WMT:   { "1M":   6.9, "3M":  19.7, "6M":  30.2, "1Y":   34.0, "3Y":  175.5, "5Y":  198.2 },
+  HD:    { "1M":  -1.8, "3M":  10.5, "6M":  -7.6, "1Y":    0.3, "3Y":   35.9, "5Y":   59.3 },
+  QCOM:         { "1M":  -9.9, "3M": -13.6, "6M": -10.2, "1Y":  -13.2, "3Y":   19.1, "5Y":   14.0 },
+  "000660.KS":  { "1M":  31.4, "3M":  94.9, "6M": 284.9, "1Y":  375.6, "3Y":  893.3, "5Y":  481.4 },
+};
+
+const PERIODS = ["1M","3M","6M","1Y","3Y","5Y"];
+const ALL_ETFS = ["XUTC","SP20","EQQQ","WTAI","CSPX","VWCE"];
+const COMPARE_URL = "https://www.justetf.com/en/etf-comparison.html?isin=IE00BGQYRS42&isin=IE000VA628D5&isin=IE0032077012&isin=IE00BDVPNG13&isin=IE00B5BMR087&isin=IE00BK5BQT80";
+
+/* Matrix Dimensions */
+const LABEL_W = 92, CELL_W = 72, CELL_H = 72, HEADER_H = 58;
+
+/* ─── Helpers ─────────────────────────────────────────────────────── */
+const f = {
+  pct: (v,d=1) => v==null?"—":`${v>0?"+":""}${Number(v).toFixed(d)}%`,
+  pp:  (v)     => v==null?"—":`${v>0?"+":""}${Number(v).toFixed(2)}pp`,
+  wt:  (v)     => v==null?"—":`${Number(v).toFixed(1)}%`,
+  retColor: (v) => v==null?"#8E8E93":v>0?"#1C7C4A":"#FF3B30",
+};
+
+function bubbleStyle(contrib, absMax, weight, maxWeight) {
+  const MIN_D = 16, MAX_D = CELL_W * 0.84;
+  const size = (weight && maxWeight)
+    ? MIN_D + (MAX_D - MIN_D) * Math.sqrt(weight / maxWeight)
+    : 0;
+  let bg="#E5E5EA", textColor="#8E8E93";
+  if (contrib!=null && absMax>0) {
+    const t = Math.min(Math.abs(contrib)/absMax, 1);
+    if (contrib>=0) {
+      const r=Math.round(220-t*164), g=Math.round(240-t*116), b=Math.round(224-t*150);
+      bg=`rgb(${r},${g},${b})`;
+      textColor=(t>0.5)?"#FFFFFF":"#1C4A2A";
+    } else {
+      const r=Math.round(255-t*40), g=Math.round(229-t*229), b=Math.round(227-t*227);
+      bg=`rgb(${Math.max(r,215)},${Math.max(g,0)},${Math.max(b,0)})`;
+      textColor=(t>0.45)?"#FFFFFF":"#7A0010";
+    }
+  }
+  return {size,bg,textColor};
+}
+
+/* ─── Components ──────────────────────────────────────────────────── */
+function Pill({active,accent,onClick,children,mono}) {
+  return (
+    <button
+      className={`pill${active?" active":""}${active&&accent?" accent":""}`}
+      onClick={onClick}
+      style={mono?{fontFamily:"var(--mono)",fontSize:11}:{}}
+    >{children}</button>
+  );
+}
+
+function Tooltip({cell,pos,holdingWeightMap,holdingNameMap,contributions,returns,holdingEtfMap,topNHoldings}) {
+  if (!cell) return null;
+  const {etf,ticker,period}=cell;
+  const weight=holdingWeightMap[ticker]?.[etf];
+  const ret=returns[ticker]?.[period];
+  const contrib=contributions[etf]?.[ticker];
+  const name=holdingNameMap[ticker]||ticker;
+  const rank=(topNHoldings[etf]||[]).findIndex(h=>h.ticker===ticker)+1;
+  const shared=holdingEtfMap[ticker]?.size||0;
+  const vp={w:window.innerWidth,h:window.innerHeight};
+  const x=Math.min(pos.x+14,vp.w-230);
+  const y=Math.min(pos.y+14,vp.h-185);
+  return (
+    <div className="tooltip" style={{left:x,top:y}}>
+      <div style={{fontWeight:600,fontSize:13,letterSpacing:"-0.2px"}}>{name}</div>
+      <div style={{fontSize:10,opacity:0.5,marginTop:2}}>
+        {ticker} · in {etf} · rank #{rank||"—"} · shared by {shared} ETF{shared!==1?"s":""}
+      </div>
+      <div className="tooltip-grid">
+        <span className="tooltip-lbl">Weight in {etf}</span>
+        <span className="tooltip-val">{f.wt(weight)}</span>
+        <span className="tooltip-lbl">{period} (USD) return</span>
+        <span className="tooltip-val" style={{color:f.retColor(ret)}}>{f.pct(ret)}</span>
+        <span className="tooltip-lbl">Contribution</span>
+        <span className="tooltip-val" style={{color:f.retColor(contrib)}}>{f.pp(contrib)}</span>
+      </div>
+      <div style={{fontSize:8,opacity:0.3,marginTop:5}}>weight × return ÷ 100 (approx.)</div>
+    </div>
+  );
+}
+
+function BubbleCell({etf,ticker,weight,contribution,absMax,maxWeight,dimmed,highlighted,onClick}) {
+  const {size,bg,textColor}=bubbleStyle(contribution,absMax,weight,maxWeight);
+  if (!weight) return (
+    <div className="cell-inner">
+      <div style={{width:4,height:4,borderRadius:"50%",background:"#E5E5EA"}}/>
+    </div>
+  );
+  const showContrib=size>=34, showWeight=size>=50;
+  const cfs=size>=56?10:size>=42?9:8;
+  return (
+    <div className="cell-inner" onClick={onClick}>
+      <div className="bubble" style={{
+        width:size,height:size,background:bg,
+        opacity:dimmed?0.12:1,
+        transform:highlighted?"scale(1.14)":"scale(1)",
+        outline:highlighted?"2px solid #1C1C1E":"none",
+        outlineOffset:2,
+      }}>
+        {showContrib&&<span style={{fontSize:cfs,fontWeight:600,color:textColor,fontFamily:"var(--mono)",lineHeight:1.05,textAlign:"center",padding:"0 2px"}}>{f.pp(contribution)}</span>}
+        {showWeight&&<span style={{fontSize:7,color:textColor,opacity:0.6,fontFamily:"var(--mono)",lineHeight:1}}>{f.wt(weight)}</span>}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Flexible Grid Card: Ticker ──────────────────────────────────── */
+function TickerPopup({ticker, holdingWeightMap, holdingNameMap, onClose}) {
+  if (!ticker) return null;
+  const name = holdingNameMap[ticker] || ticker;
+  return (
+    <div style={{
+      width: 260,
+      background: "#fff",
+      border: "1px solid #E5E5EA",
+      borderRadius: 11,
+      boxShadow: "0 8px 32px rgba(0,0,0,0.13)",
+      fontFamily: "var(--sans)",
+      overflow: "hidden",
+      pointerEvents: "auto",
+      display: "flex",
+      flexDirection: "column",
+      flexShrink: 0
+    }} onClick={e=>e.stopPropagation()}>
+      <div style={{background:"#1C1C1E",padding:"10px 13px 9px",display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
+        <div>
+          <div style={{fontSize:15,fontWeight:700,color:"#fff",fontFamily:"var(--mono)",letterSpacing:"-0.3px"}}>{ticker}</div>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.45)",marginTop:2,lineHeight:1.3}}>{name}</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2}}>
+          <a href={`https://finance.yahoo.com/quote/${ticker}`} target="_blank" rel="noopener noreferrer"
+            style={{fontSize:9.5,color:"#1A52D5",fontWeight:600,textDecoration:"none",
+              background:"rgba(26,82,213,0.18)",padding:"3px 8px",borderRadius:5,whiteSpace:"nowrap",letterSpacing:"0.2px"}}>
+            Yahoo ↗
+          </a>
+          <button onClick={onClose} style={{color:"rgba(255,255,255,0.4)",fontSize:15,lineHeight:1,cursor:"pointer",background:"none",border:"none",padding:0}}>✕</button>
+        </div>
+      </div>
+      <div style={{padding:"9px 13px 8px",borderBottom:"1px solid #F2F2F7"}}>
+        <div style={{fontSize:8.5,color:"#B0B0B8",fontWeight:600,letterSpacing:"0.5px",textTransform:"uppercase",marginBottom:6}}>Performance (USD)</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:3}}>
+          {PERIODS_ALL.map(p=>{
+            const ret = HOLDING_RETURNS[ticker]?.[p];
+            return (
+              <div key={p} style={{textAlign:"center"}}>
+                <div style={{fontSize:8,color:"#B0B0B8",marginBottom:2}}>{p}</div>
+                <div style={{fontSize:11,fontWeight:600,fontFamily:"var(--mono)",color:ret==null?"#D1D1D6":ret>0?"#1C7C4A":"#FF3B30",lineHeight:1}}>
+                  {ret==null?"—":`${ret>0?"+":""}${ret.toFixed(1)}%`}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{padding:"9px 13px 11px"}}>
+        <div style={{fontSize:8.5,color:"#B0B0B8",fontWeight:600,letterSpacing:"0.5px",textTransform:"uppercase",marginBottom:6}}>Weight in ETF</div>
+        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+          {ALL_ETFS.map(etf=>{
+            const w = holdingWeightMap[ticker]?.[etf];
+            const pct = w != null ? w : 0;
+            const maxW = 20;
+            return (
+              <div key={etf} style={{display:"flex",alignItems:"center",gap:7}}>
+                <div style={{fontSize:10,fontWeight:600,fontFamily:"var(--mono)",color:"#1C1C1E",width:38,flexShrink:0}}>{etf}</div>
+                <div style={{flex:1,height:5,background:"#F2F2F7",borderRadius:3,overflow:"hidden"}}>
+                  <div style={{width:`${Math.min(100,(pct/maxW)*100)}%`,height:"100%",background:w!=null?"#1C1C1E":"transparent",borderRadius:3,transition:"width 0.2s"}}/>
+                </div>
+                <div style={{fontSize:10,fontFamily:"var(--mono)",color:w!=null?"#1C1C1E":"#D1D1D6",width:36,textAlign:"right",flexShrink:0}}>
+                  {w!=null?`${w.toFixed(1)}%`:"—"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Flexible Grid Card: ETF with Waterfall ──────────────────────── */
+function EtfPopup({etf, period, topNHoldings, contributions, onClose}) {
+  if (!etf) return null;
+  const meta = ETF_META[etf] || {};
+  const rets = ETF_RETURNS[etf] || {};
+  
+  // Waterfall Logic
+  const etfRet = rets[period];
+  const topHoldings = topNHoldings[etf] || [];
+  const etfContribs = contributions[etf] || {};
+  
+  let waterfallContent = null;
+
+  if (etfRet == null) {
+    waterfallContent = <div style={{padding: "10px 13px", fontSize: 10, color: "#8E8E93"}}>No return data for this period.</div>;
+  } else {
+    const mapped = topHoldings.map(h => ({ ticker: h.ticker, contrib: etfContribs[h.ticker] || 0 }));
+    mapped.sort((a,b) => b.contrib - a.contrib); // Largest positive first
+
+    let runningTotal = 0;
+    const data = mapped.map(d => {
+       const start = runningTotal;
+       const end = runningTotal + d.contrib;
+       runningTotal += d.contrib;
+       return { ...d, start, end };
+    });
+
+    const otherContrib = etfRet - runningTotal;
+    data.push({ ticker: "Others", contrib: otherContrib, start: runningTotal, end: etfRet, isOther: true });
+    data.push({ ticker: "Total", contrib: etfRet, start: 0, end: etfRet, isTotal: true });
+
+    const allVals = data.flatMap(d => [d.start, d.end, 0]);
+    const minVal = Math.min(...allVals);
+    const maxVal = Math.max(...allVals);
+    const range = (maxVal - minVal) || 1;
+    const zeroPct = (-minVal / range) * 100;
+
+    // Dynamic Scaling
+    const isDense = data.length > 12;
+    const isVeryDense = data.length > 17;
+    const rowGap = isVeryDense ? 2 : (isDense ? 3 : 5);
+    const barH = isVeryDense ? 5 : (isDense ? 6 : 8);
+    const fontS = isVeryDense ? 8.5 : (isDense ? 9 : 9.5);
+
+    waterfallContent = (
+      <div style={{ padding: "8px 13px 11px", overflowY: "auto", flexShrink: 1 }}>
+        <div style={{fontSize:8.5,color:"#B0B0B8",fontWeight:600,letterSpacing:"0.5px",textTransform:"uppercase",marginBottom:6}}>
+          {period} Return Attribution
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: rowGap }}>
+           {data.map((d, i) => {
+              const isPos = d.contrib >= 0;
+              const left = ((Math.min(d.start, d.end) - minVal) / range) * 100;
+              const width = (Math.abs(d.contrib) / range) * 100;
+              let bg = d.isTotal ? "#1C1C1E" : (isPos ? "#34C759" : "#FF3B30");
+              if (d.isOther) bg = "#8E8E93";
+
+              return (
+                <div key={d.ticker + i} style={{ display: 'grid', gridTemplateColumns: '40px 1fr 42px', gap: 6, alignItems: 'center', fontSize: fontS, fontFamily: 'var(--mono)' }}>
+                   <div style={{ fontWeight: d.isTotal ? 700 : 500, color: d.isOther ? "#8E8E93" : "#1C1C1E" }}>{d.ticker}</div>
+                   <div style={{ position: 'relative', height: barH }}>
+                      {/* Zero Axis Line */}
+                      {(minVal < 0 && maxVal > 0) && <div style={{ position: 'absolute', left: `${zeroPct}%`, top: -2, bottom: -2, width: 1, background: '#E5E5EA', zIndex: 1 }} />}
+                      {/* Bar Component */}
+                      <div style={{ position: 'absolute', left: `${left}%`, width: `${width}%`, height: '100%', background: bg, borderRadius: 1 }} />
+                      {/* Waterfall Connector Line */}
+                      {!d.isTotal && i < data.length - 1 && (
+                          <div style={{ position: 'absolute', left: `${((d.end - minVal) / range) * 100}%`, top: barH, height: rowGap + barH, width: 1, background: '#D1D1D6', zIndex: 0 }} />
+                      )}
+                   </div>
+                   <div style={{ textAlign: 'right', fontWeight: d.isTotal ? 700 : 500, color: d.isTotal ? "#1C1C1E" : (isPos ? "#1C7C4A" : "#D70015") }}>
+                      {d.isOther && Math.abs(d.contrib) < 0.01 ? "~0" : f.pp(d.contrib)}
+                   </div>
+                </div>
+              );
+           })}
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div style={{
+      width: 260,
+      background: "#fff",
+      border: "1px solid #E5E5EA",
+      borderRadius: 11,
+      boxShadow: "0 8px 32px rgba(0,0,0,0.13)",
+      fontFamily: "var(--sans)",
+      display: "flex",
+      flexDirection: "column",
+      pointerEvents: "auto",
+      flexShrink: 0,
+      maxHeight: "calc(100vh - 60px)",
+    }} onClick={e=>e.stopPropagation()}>
+      <div style={{background:"#1C1C1E",padding:"10px 13px 9px",display:"flex",alignItems:"flex-start",justifyContent:"space-between", flexShrink: 0}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:700,color:"#fff",fontFamily:"var(--mono)",letterSpacing:"-0.3px"}}>{etf}</div>
+          <div style={{fontSize:9.5,color:"rgba(255,255,255,0.45)",marginTop:2,lineHeight:1.35,maxWidth:168}}>{meta.name}</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:7,marginTop:2,flexShrink:0}}>
+          <a href={meta.justetf} target="_blank" rel="noopener noreferrer"
+            style={{fontSize:9.5,color:"#1A52D5",fontWeight:600,textDecoration:"none",
+              background:"rgba(26,82,213,0.18)",padding:"3px 8px",borderRadius:5,
+              whiteSpace:"nowrap",letterSpacing:"0.2px"}}>
+            justETF ↗
+          </a>
+          <button onClick={onClose} style={{color:"rgba(255,255,255,0.4)",fontSize:15,lineHeight:1,cursor:"pointer",background:"none",border:"none",padding:0}}>✕</button>
+        </div>
+      </div>
+      <div style={{padding:"8px 13px 8px",borderBottom:"1px solid #F2F2F7",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"5px 10px", flexShrink: 0}}>
+        {[
+          ["Issuer",   meta.issuer],
+          ["Index",    meta.index],
+          ["Domicile", meta.domicile],
+          ["TER",      meta.ter],
+          ["Currency", meta.currency],
+        ].map(([lbl,val])=>(
+          <div key={lbl}>
+            <div style={{fontSize:8,color:"#B0B0B8",fontWeight:600,letterSpacing:"0.4px",textTransform:"uppercase",marginBottom:1}}>{lbl}</div>
+            <div style={{fontSize:10.5,color:"#1C1C1E",fontWeight:500,lineHeight:1.2}}>{val||"—"}</div>
+          </div>
+        ))}
+      </div>
+      {waterfallContent}
+    </div>
+  );
+}
+
+/* ─── Collapsible footer notes ────────────────────────────────────── */
+function FooterNotes({topN}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="footer">
+      <button className="footer-toggle" onClick={()=>setOpen(o=>!o)}>
+        <span className="ft-label">{open?"▾":"▸"} notes</span>
+      </button>
+      {open && (
+        <div className="footer-body">
+          <p style={{fontSize:9.5,color:"#8E8E93",lineHeight:1.6}}>
+            <strong style={{color:"#636366"}}>Data as of Feb 24, 2026.</strong>{" "}
+            Holdings: justetf.com.
+            ETF returns: updated 1M values to match rolling 30-day view from justETF interactive chart (USD). Holding returns: Yahoo Finance US (yfinance). All metrics displayed and calculated in USD.
+            Contribution ≈ weight × return ÷ 100 (pp). Top-{topN} only — absent holdings = zero weight.
+            Not investment advice.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Main App ────────────────────────────────────────────────────── */
+function App() {
+  const [topN,setTopN]=useState(10);
+  const [period,setPeriod]=useState("1M");
+  const [sortMode,setSortMode]=useState("shared");
+  const [hovered,setHovered]=useState(null);
+  const [tooltipXY,setTooltipXY]=useState({x:0,y:0});
+  const [selHolding,setSelHolding]=useState(null);
+  const [selRow,setSelRow]=useState(null);
+  
+  // Track all explicitly opened cards (both Tickers and ETFs)
+  const [openCards, setOpenCards] = useState([]);
+
+  const closeCard = useCallback((id, type) => {
+    setOpenCards(prev => prev.filter(c => !(c.id === id && c.type === type)));
+  }, []);
+
+  const {columns,holdingEtfMap,holdingWeightMap,holdingNameMap,topNHoldings,contributions,absMax,maxWeight} = useMemo(()=>{
+    const holdingEtfMap={},holdingWeightMap={},holdingNameMap={},topNHoldings={};
+    ALL_ETFS.forEach(etf=>{
+      const top=(RAW_HOLDINGS[etf]||[]).slice(0,topN);
+      topNHoldings[etf]=top;
+      top.forEach(h=>{
+        if(!holdingEtfMap[h.ticker]) holdingEtfMap[h.ticker]=new Set();
+        if(!holdingWeightMap[h.ticker]) holdingWeightMap[h.ticker]={};
+        holdingEtfMap[h.ticker].add(etf);
+        holdingWeightMap[h.ticker][etf]=h.weight;
+        holdingNameMap[h.ticker]=h.name;
+      });
+    });
+    const allTickers=Object.keys(holdingEtfMap);
+    let cols;
+    if(sortMode==="shared") cols=[...allTickers].sort((a,b)=>{
+      const d=holdingEtfMap[b].size-holdingEtfMap[a].size;
+      if(d) return d;
+      return Math.max(...Object.values(holdingWeightMap[b]))-Math.max(...Object.values(holdingWeightMap[a]));
+    });
+    else if(sortMode==="weight") cols=[...allTickers].sort((a,b)=>Math.max(...Object.values(holdingWeightMap[b]))-Math.max(...Object.values(holdingWeightMap[a])));
+    else cols=[...allTickers].sort();
+    
+    const contributions={};
+    let absMax=0,maxWeight=0;
+    ALL_ETFS.forEach(etf=>{
+      contributions[etf]={};
+      cols.forEach(t=>{
+        const w=holdingWeightMap[t]?.[etf];
+        const r=HOLDING_RETURNS[t]?.[period];
+        const c=(w!=null&&r!=null)?(w*r)/100:null;
+        contributions[etf][t]=c;
+        if(c!=null) absMax=Math.max(absMax,Math.abs(c));
+        if(w!=null) maxWeight=Math.max(maxWeight,w);
+      });
+    });
+    return {columns:cols,holdingEtfMap,holdingWeightMap,holdingNameMap,topNHoldings,contributions,absMax:absMax||1,maxWeight:maxWeight||100};
+  },[topN,period,sortMode]);
+
+  // Calculate global min/max for the inline performance bars
+  const { inlinePerfRange, inlinePerfZeroPct, minRet, maxRet } = useMemo(() => {
+    const rets = ALL_ETFS.map(e => ETF_RETURNS[e]?.[period]).filter(r => r != null);
+    const minR = Math.min(0, ...rets);
+    const maxR = Math.max(0, ...rets);
+    const rng = (maxR - minR) || 1;
+    const zPct = (-minR / rng) * 100;
+    return { inlinePerfRange: rng, inlinePerfZeroPct: zPct, minRet: minR, maxRet: maxR };
+  }, [period]);
+
+  return (
+    <div id="root" style={{display:"flex",flexDirection:"column",height:"100vh",overflow:"hidden"}} onClick={()=>{setHovered(null);}}>
+
+      {/* ── Single toolbar ── */}
+      <div className="toolbar">
+        {/* Brand */}
+        <div className="tb-brand">
+          <div style={{width:7,height:7,borderRadius:"50%",background:"#1A52D5",flexShrink:0}}/>
+          <span style={{fontSize:12,fontWeight:700,letterSpacing:"-0.2px",whiteSpace:"nowrap"}}>ETF Matrix</span>
+        </div>
+        
+        {/* Period */}
+        <div className="tb-group">
+          <span className="tb-lbl">RET (USD)</span>
+          {PERIODS.map(p=>(
+            <Pill key={p} active={period===p} accent onClick={()=>setPeriod(p)}>{p}</Pill>
+          ))}
+        </div>
+        
+        {/* Top-N */}
+        <div className="tb-group">
+          <span className="tb-lbl">TOP</span>
+          {[5,10,15,20].map(n=>(
+            <Pill key={n} mono active={topN===n} onClick={()=>setTopN(n)}>{n}</Pill>
+          ))}
+        </div>
+        
+        {/* Sort */}
+        <div className="tb-group" style={{borderRight:"none"}}>
+          <span className="tb-lbl">SORT</span>
+          {[["shared","≥2"],["weight","Wt"],["alpha","A–Z"]].map(([id,lbl])=>(
+            <Pill key={id} active={sortMode===id} onClick={()=>setSortMode(id)}>{lbl}</Pill>
+          ))}
+        </div>
+        
+        {/* Compare on justETF */}
+        <div className="tb-group" style={{borderRight:"none",paddingLeft:4}}>
+          <a href={COMPARE_URL} target="_blank" rel="noopener noreferrer"
+            style={{display:"inline-flex",alignItems:"center",gap:3,fontSize:10,fontWeight:600,
+              color:"#1A52D5",textDecoration:"none",whiteSpace:"nowrap",letterSpacing:"0.1px",
+              padding:"4px 8px",border:"1.5px solid #1A52D5",borderRadius:100,lineHeight:1}}>
+            justETF ↗
+          </a>
+        </div>
+      </div>
+
+      {/* ── Matrix ── */}
+      <div className="matrix-outer" onClick={e=>{if(e.target===e.currentTarget||e.target.classList.contains('matrix-outer')){setHovered(null);}}}>
+        <table className="matrix">
+          <thead>
+            <tr>
+              {/* Sticky Col 1: Combined ETF Ticker & Performance Header */}
+              <th style={{width:LABEL_W, height:HEADER_H, position: 'sticky', left: 0, top: 0, zIndex: 10, background: 'var(--bg)', borderRight:"1px solid #E5E5EA", borderBottom:"2px solid #1C1C1E"}}>
+                <div style={{height:"100%",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"0 8px 6px"}}>
+                  <span style={{fontSize:8.5,color:"#8E8E93"}}>ETF (Perf USD)</span>
+                </div>
+              </th>
+
+              {/* Scrollable Data Columns Headers */}
+              {columns.map(ticker=>{
+                const ret=HOLDING_RETURNS[ticker]?.[period];
+                const isHighl=selHolding===ticker;
+                const isDim=selHolding&&selHolding!==ticker;
+                const isPopOpen=openCards.some(c => c.type === 'ticker' && c.id === ticker);
+                return (
+                  <th key={ticker} style={{
+                    width:CELL_W,height:HEADER_H,
+                    position: 'sticky', top: 0, zIndex: 4,
+                    borderRight:"1px solid #E5E5EA",borderBottom:"2px solid #1C1C1E",
+                    background:isHighl?"#F2F2F7":"#fff",
+                    opacity:isDim?0.2:1,transition:"opacity 0.15s,background 0.1s",
+                  }}>
+                    <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,padding:"0 2px",cursor:"pointer",userSelect:"none"}}
+                      onClick={e=>{
+                        e.stopPropagation();
+                        setOpenCards(prev => {
+                          if (!prev.some(c => c.id === ticker && c.type === 'ticker')) {
+                            return [...prev, { id: ticker, type: 'ticker' }];
+                          }
+                          return prev;
+                        });
+                        setSelHolding(p=>p===ticker?null:ticker);
+                      }}>
+                      <div style={{fontSize:10.5,fontWeight:700,color:isPopOpen?"#1A52D5":"#1C1C1E",lineHeight:1,fontFamily:"var(--mono)",textDecoration:isPopOpen?"underline":"none",textUnderlineOffset:2}}>{ticker}</div>
+                      <div style={{fontSize:9.5,fontFamily:"var(--mono)",color:f.retColor(ret),lineHeight:1}}>{f.pct(ret)}</div>
+                    </div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {ALL_ETFS.map(etf=>{
+              const etfRet=ETF_RETURNS[etf]?.[period];
+              const isHighlR=selRow===etf;
+              const isDimR=selRow&&selRow!==etf;
+              const isPopOpenEtf=openCards.some(c => c.type === 'etf' && c.id === etf);
+              const rowBg = isHighlR?"#F2F2F7":"#fff";
+              
+              // Perf Bar Logic
+              const hasData = etfRet != null;
+              const isPos = hasData && etfRet >= 0;
+              const barWidth = hasData ? (Math.abs(etfRet) / inlinePerfRange) * 100 : 0;
+              
+              return (
+                <tr key={etf} style={{opacity:isDimR?0.15:1,transition:"opacity 0.15s"}}>
+                  
+                  {/* Sticky Col 1: Combined ETF Ticker & Inline Performance Bar */}
+                  <td style={{
+                    width:LABEL_W, height:CELL_H,
+                    position: 'sticky', left: 0, zIndex: 5,
+                    borderRight:"1px solid #E5E5EA", borderBottom:"1px solid #E5E5EA",
+                    background: rowBg,
+                    cursor:"pointer", verticalAlign:"middle"
+                  }} onClick={e=>{
+                    e.stopPropagation();
+                    setOpenCards(prev => {
+                      if (!prev.some(c => c.id === etf && c.type === 'etf')) {
+                        return [...prev, { id: etf, type: 'etf' }];
+                      }
+                      return prev;
+                    });
+                    setSelRow(p=>p===etf?null:etf);
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', padding: '0 8px', justifyContent: 'center', height: '100%' }}>
+                      
+                      {/* Top Row: Ticker and Percentage */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                        <span style={{fontSize:12,fontWeight:700,fontFamily:"var(--mono)",color:isPopOpenEtf?"#1A52D5":"#1C1C1E",textDecoration:isPopOpenEtf?"underline":"none",textUnderlineOffset:2}}>
+                          {etf}
+                        </span>
+                        <span style={{fontSize:9.5,fontFamily:"var(--mono)",fontWeight:600,color:hasData ? (isPos ? '#1C7C4A' : '#D70015') : '#8E8E93'}}>
+                          {f.pct(etfRet)}
+                        </span>
+                      </div>
+                      
+                      {/* Bottom Row: Performance Bar Container */}
+                      <div style={{ height: 5, position: 'relative', width: '100%' }}>
+                        {/* Zero Line */}
+                        {(minRet < 0 && maxRet > 0) && <div style={{ position: 'absolute', left: `${inlinePerfZeroPct}%`, top: -2, bottom: -2, width: 1, background: '#C7C7CC', zIndex: 1 }} />}
+                        {/* Fill Bar */}
+                        {hasData && (
+                           <div style={{
+                             position: 'absolute', top: 0, bottom: 0,
+                             background: isPos ? '#34C759' : '#FF3B30',
+                             borderRadius: 1.5,
+                             ...(isPos ? { left: `${inlinePerfZeroPct}%`, width: `${barWidth}%` } : { right: `${100 - inlinePerfZeroPct}%`, width: `${barWidth}%` })
+                           }} />
+                        )}
+                      </div>
+                      
+                    </div>
+                  </td>
+
+                  {/* Scrollable Data Columns Bubbles */}
+                  {columns.map(ticker=>{
+                    const weight=holdingWeightMap[ticker]?.[etf];
+                    const contrib=contributions[etf]?.[ticker];
+                    const isHighlH=selHolding===ticker;
+                    const isDimH=selHolding&&selHolding!==ticker;
+                    const isHov=hovered?.etf===etf&&hovered?.ticker===ticker;
+                    return (
+                      <td key={ticker} style={{
+                        width:CELL_W,height:CELL_H,padding:0,
+                        borderRight:"1px solid #E5E5EA",borderBottom:"1px solid #E5E5EA",
+                        background:isHov?"#F7F7F8":"#fff",transition:"background 0.07s"
+                      }}>
+                        <BubbleCell
+                          etf={etf} ticker={ticker}
+                          weight={weight} contribution={contrib}
+                          absMax={absMax} maxWeight={maxWeight}
+                          dimmed={isDimH} highlighted={isHighlH}
+                          onClick={e=>{
+                            if(!weight) return;
+                            const same=hovered?.etf===etf&&hovered?.ticker===ticker;
+                            setHovered(same?null:{etf,ticker,period});
+                            if(!same) setTooltipXY({x:e.clientX,y:e.clientY});
+                            setSelHolding(p=>p===ticker?null:ticker);
+                          }}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <FooterNotes topN={topN}/>
+
+      <Tooltip cell={hovered} pos={tooltipXY}
+        holdingWeightMap={holdingWeightMap} holdingNameMap={holdingNameMap}
+        contributions={contributions} returns={HOLDING_RETURNS}
+        holdingEtfMap={holdingEtfMap} topNHoldings={topNHoldings}/>
+
+      {/* ── Cards Overlay (Multiple Open Popups) ── */}
+      <div style={{
+        position: 'fixed',
+        top: 48,
+        left: 12,
+        right: 12,
+        bottom: 12,
+        pointerEvents: 'none',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 12,
+        alignContent: 'flex-start',
+        alignItems: 'flex-start',
+        justifyContent: 'flex-end',
+        zIndex: 2000,
+        overflowY: 'auto'
+      }}>
+        {openCards.map(c => {
+          if (c.type === 'ticker') {
+            return (
+              <TickerPopup
+                key={`ticker-${c.id}`}
+                ticker={c.id}
+                holdingWeightMap={holdingWeightMap}
+                holdingNameMap={holdingNameMap}
+                onClose={() => closeCard(c.id, 'ticker')}
+              />
+            );
+          } else {
+            return (
+              <EtfPopup
+                key={`etf-${c.id}`}
+                etf={c.id}
+                period={period}
+                topNHoldings={topNHoldings}
+                contributions={contributions}
+                onClose={() => closeCard(c.id, 'etf')}
+              />
+            );
+          }
+        })}
+      </div>
+
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
+
+
