@@ -115,7 +115,7 @@ table.matrix td,table.matrix th{padding:0;margin:0}
 const { useState, useMemo, useRef, useCallback } = React;
 
 /* ─────────────────────────────────────────────────────────────────────
-   EMBEDDED DATA — compiled Feb 24, 2026 (All Returns strictly in USD)
+   EMBEDDED DATA — compiled Mar 15, 2026 (All Returns strictly in USD)
 ───────────────────────────────────────────────────────────────────── */
 
 const RAW_HOLDINGS = {
@@ -244,53 +244,53 @@ const ETF_META = {
 
 /* ─── Holding Returns (Strictly US-listed tickers, inherently in USD) ─── */
 const HOLDING_RETURNS = {
-  NVDA:  { "1M":   2.1, "3M":   7.1, "6M":   7.6, "1Y":   42.5, "3Y":  710.3, "5Y": 1258.3 },
-  AAPL:  { "1M":   7.4, "3M":  -1.9, "6M":  17.1, "1Y":    8.9, "3Y":   80.7, "5Y":  117.1 },
-  MSFT:  { "1M": -17.3, "3M": -18.4, "6M": -23.9, "1Y":   -5.1, "3Y":   54.5, "5Y":   71.8 },
-  AVGO:  { "1M":   3.2, "3M":  -2.7, "6M":  12.8, "1Y":   52.4, "3Y":  491.8, "5Y":  678.1 },
-  MU:    { "1M":   5.3, "3M": 103.1, "6M": 258.1, "1Y":  327.3, "3Y":  627.0, "5Y":  389.0 },
-  AMD:   { "1M": -24.3, "3M":  -3.5, "6M":  17.2, "1Y":   77.4, "3Y":  146.5, "5Y":  132.0 },
-  PLTR:  { "1M": -23.0, "3M": -15.7, "6M": -17.7, "1Y":   28.9, "3Y": 1498.5, "5Y":  388.2 },
-  CSCO:  { "1M":   4.2, "3M":   2.7, "6M":  16.8, "1Y":   24.5, "3Y":   72.0, "5Y":   97.4 },
-  LRCX:  { "1M":  11.2, "3M":  70.1, "6M": 143.0, "1Y":  184.2, "3Y":  415.0, "5Y":  354.7 },
-  IBM:   { "1M": -23.2, "3M": -24.5, "6M":  -6.7, "1Y":  -12.5, "3Y":   89.3, "5Y":  136.2 },
-  ACN:   { "1M": -28.4, "3M": -20.1, "6M": -22.4, "1Y":  -44.2, "3Y":  -22.7, "5Y":  -15.9 },
-  AMAT:  { "1M":  16.0, "3M":  67.0, "6M": 130.6, "1Y":  119.1, "3Y":  239.5, "5Y":  236.3 },
-  TXN:   { "1M":  14.5, "3M":  38.8, "6M":   8.4, "1Y":   12.3, "3Y":   40.1, "5Y":   46.7 },
-  CRM:   { "1M": -21.9, "3M": -21.4, "6M": -28.0, "1Y":  -42.1, "3Y":    9.9, "5Y":  -23.5 },
-  INTU:  { "1M": -36.2, "3M": -45.7, "6M": -45.5, "1Y":  -36.0, "3Y":  -11.0, "5Y":   -7.0 },
-  META:  { "1M":  -3.3, "3M":   7.3, "6M": -15.4, "1Y":   -6.5, "3Y":  273.0, "5Y":  141.4 },
-  GOOGL: { "1M":  -5.0, "3M":   4.0, "6M":  51.4, "1Y":   74.1, "3Y":  245.3, "5Y":  204.7 },
-  GOOG:  { "1M":  -5.1, "3M":   4.1, "6M":  51.0, "1Y":   72.3, "3Y":  244.8, "5Y":  203.3 },
-  VZ:    { "1M":  25.7, "3M":  22.6, "6M":  15.7, "1Y":   24.1, "3Y":   58.0, "5Y":   18.3 },
-  CMCSA: { "1M":   8.0, "3M":  24.8, "6M":   1.0, "1Y":   -3.0, "3Y":   -1.1, "5Y":  -26.7 },
-  NFLX:  { "1M": -11.7, "3M": -27.1, "6M": -36.9, "1Y":  -24.2, "3Y":  134.9, "5Y":   39.2 },
-  T:     { "1M":  20.9, "3M":  11.3, "6M":   1.4, "1Y":   11.8, "3Y":   74.0, "5Y":   79.0 },
-  EA:    { "1M":  -1.7, "3M":  -0.0, "6M":  17.2, "1Y":   53.8, "3Y":   84.0, "5Y":   45.9 },
-  TTWO:  { "1M": -20.4, "3M": -16.9, "6M": -14.6, "1Y":   -7.6, "3Y":   77.2, "5Y":    5.2 },
-  DIS:   { "1M":  -5.9, "3M":   0.8, "6M": -11.6, "1Y":   -2.8, "3Y":    5.1, "5Y":  -45.8 },
-  WBD:   { "1M":   1.2, "3M":  24.8, "6M": 140.0, "1Y":  168.3, "3Y":   83.9, "5Y":  -45.4 },
-  LYV:   { "1M":   7.7, "3M":  21.2, "6M":  -4.5, "1Y":    5.9, "3Y":  106.9, "5Y":   75.2 },
-  CHTR:  { "1M":  18.7, "3M":  12.1, "6M": -18.0, "1Y":  -37.0, "3Y":  -40.6, "5Y":  -62.3 },
-  OMC:   { "1M":   1.2, "3M":   8.9, "6M":   3.3, "1Y":    1.8, "3Y":   -3.0, "5Y":   36.0 },
-  NWSA:  { "1M": -14.3, "3M": -10.5, "6M": -24.3, "1Y":  -18.8, "3Y":   34.9, "5Y":    2.7 },
-  AMZN:  { "1M": -14.2, "3M":  -7.0, "6M": -10.3, "1Y":   -5.2, "3Y":  114.2, "5Y":   28.5 },
-  TSLA:  { "1M": -11.0, "3M":   2.2, "6M":  17.6, "1Y":   18.4, "3Y":   97.9, "5Y":   71.6 },
-  COST:  { "1M":   0.4, "3M":   9.8, "6M":   3.2, "1Y":   -4.2, "3Y":  108.2, "5Y":  204.4 },
-  PEP:   { "1M":  16.4, "3M":  16.2, "6M":  14.7, "1Y":   14.0, "3Y":    5.4, "5Y":   47.9 },
-  TSM:   { "1M":  10.5, "3M":  34.9, "6M":  59.8, "1Y":   89.2, "3Y":  330.4, "5Y":  211.7 },
-  JPM:   { "1M":   0.0, "3M":   0.3, "6M":   1.4, "1Y":   15.0, "3Y":  128.8, "5Y":  124.4 },
-  LLY:   { "1M":  -0.4, "3M":   0.1, "6M":  49.2, "1Y":   22.1, "3Y":  230.5, "5Y":  449.5 },
-  ORCL:  { "1M": -20.2, "3M": -28.7, "6M": -40.0, "1Y":  -14.9, "3Y":   65.4, "5Y":  134.6 },
-  SAP:   { "1M": -14.9, "3M": -16.9, "6M": -27.4, "1Y":  -29.9, "3Y":   76.1, "5Y":   71.2 },
-  BRK_B: { "1M":   3.2, "3M":  -2.0, "6M":   1.0, "1Y":    3.2, "3Y":   63.0, "5Y":  101.2 },
-  V:     { "1M":  -5.8, "3M":  -6.4, "6M": -12.1, "1Y":  -11.4, "3Y":   41.8, "5Y":   49.9 },
-  XOM:   { "1M":  12.4, "3M":  29.6, "6M":  37.6, "1Y":   40.9, "3Y":   50.8, "5Y":  231.7 },
-  UNH:   { "1M": -20.7, "3M": -11.2, "6M":  -7.0, "1Y":  -38.0, "3Y":  -39.3, "5Y":   -7.0 },
-  WMT:   { "1M":   6.9, "3M":  19.7, "6M":  30.2, "1Y":   34.0, "3Y":  175.5, "5Y":  198.2 },
-  HD:    { "1M":  -1.8, "3M":  10.5, "6M":  -7.6, "1Y":    0.3, "3Y":   35.9, "5Y":   59.3 },
-  QCOM:         { "1M":  -9.9, "3M": -13.6, "6M": -10.2, "1Y":  -13.2, "3Y":   19.1, "5Y":   14.0 },
-  "000660.KS":  { "1M":  31.4, "3M":  94.9, "6M": 284.9, "1Y":  375.6, "3Y":  893.3, "5Y":  481.4 },
+  NVDA:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  AAPL:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  MSFT:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  AVGO:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  MU:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  AMD:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  PLTR:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  CSCO:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  LRCX:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  IBM:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  ACN:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  AMAT:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  TXN:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  CRM:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  INTU:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  META:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  GOOGL:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  GOOG:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  VZ:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  CMCSA:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  NFLX:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  T:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  EA:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  TTWO:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  DIS:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  WBD:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  LYV:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  CHTR:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  OMC:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  NWSA:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  AMZN:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  TSLA:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  COST:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  PEP:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  TSM:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  JPM:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  LLY:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  ORCL:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  SAP:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  V:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  XOM:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  UNH:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  WMT:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  HD:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  QCOM:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  "000660.KS":  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
+  BRK_B:  { "1M":   null, "3M":   null, "6M":   null, "1Y":   null, "3Y":   null, "5Y":   null },
 };
 
 const PERIODS = ["1M","3M","6M","1Y","3Y","5Y"];
@@ -609,7 +609,7 @@ function FooterNotes({topN}) {
       {open && (
         <div className="footer-body">
           <p style={{fontSize:9.5,color:"#8E8E93",lineHeight:1.6}}>
-            <strong style={{color:"#636366"}}>Data as of Feb 24, 2026.</strong>{" "}
+            <strong style={{color:"#636366"}}>Data as of Mar 15, 2026.</strong>{" "}
             Holdings: justetf.com.
             ETF returns: updated 1M values to match rolling 30-day view from justETF interactive chart (USD). Holding returns: Yahoo Finance US (yfinance). All metrics displayed and calculated in USD.
             Contribution ≈ weight × return ÷ 100 (pp). Top-{topN} only — absent holdings = zero weight.
