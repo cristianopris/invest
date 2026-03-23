@@ -115,7 +115,7 @@ table.matrix td,table.matrix th{padding:0;margin:0}
 const { useState, useMemo, useRef, useCallback } = React;
 
 /* ─────────────────────────────────────────────────────────────────────
-   EMBEDDED DATA — compiled Mar 16, 2026 (All Returns strictly in USD)
+   EMBEDDED DATA — compiled Mar 23, 2026 (All Returns strictly in USD)
 ───────────────────────────────────────────────────────────────────── */
 
 const RAW_HOLDINGS = {
@@ -609,7 +609,7 @@ function FooterNotes({topN}) {
       {open && (
         <div className="footer-body">
           <p style={{fontSize:9.5,color:"#8E8E93",lineHeight:1.6}}>
-            <strong style={{color:"#636366"}}>Data as of Mar 16, 2026.</strong>{" "}
+            <strong style={{color:"#636366"}}>Data as of Mar 23, 2026.</strong>{" "}
             Holdings: justetf.com.
             ETF returns: updated 1M values to match rolling 30-day view from justETF interactive chart (USD). Holding returns: Yahoo Finance US (yfinance). All metrics displayed and calculated in USD.
             Contribution ≈ weight × return ÷ 100 (pp). Top-{topN} only — absent holdings = zero weight.
